@@ -21,8 +21,8 @@ use warnings;
 use POSIX;
 use Net::Statsd;
 
-# get hostname and mode to run, mode of 'update' and 'monitor'
-my $dbhost = $ARGV[0];
+# get FQDN hostname and mode to run, mode of 'update' and 'monitor'
+my $dbfqdn = $ARGV[0];
 my $mode = $ARGV[1];
 
 # DB connection information
@@ -30,6 +30,7 @@ my $dbuser = 'dbuser';
 my $dbpass = 'dbpass';
 my $dbname = 'percona';
 my $dbtable = 'heartbeat';
+# FQDN or IP
 my $dbmaster = '10.90.128.99';
 my $serverid = 99;
 
@@ -45,24 +46,27 @@ my $statsd_enabled = 0;
 ## Shouldn't have to change anything below this line
 ####################################################
 
-$Net::Statsd::HOST =  $statsd_host;                                                                                                                                                                                
+$Net::Statsd::HOST = $statsd_host;                                                                                                                                                                                
 $Net::Statsd::PORT = $statsd_port;
 
 # Database connections
-my $dsn_s = "DBI:mysql:database=$dbname;host=$dbhost";
-my $dbh_s = DBI->connect($dsn_slave, $dbuser, $dbpass);
-my $dsn_m = "DBI:mysql:database=$dbname;host=$dbmaster";
-my $dbh_m = DBI->connect($dsn_master, $dbuser, $dbpass);
+my $dsn_slave = "DBI:mysql:database=$dbname;host=$dbfqdn";
+my $dbh_slave = DBI->connect($dsn_slave, $dbuser, $dbpass);
+my $dsn_master = "DBI:mysql:database=$dbname;host=$dbmaster";
+my $dbh_master = DBI->connect($dsn_master, $dbuser, $dbpass);
+
+# determine host portion of FQDN
+my ($dbhost, @garbage) = split(/\./, $dbfqdn);
 
 # Main loop
 while ( 1 ) {
 	my $now = gettimeofday();
 
-    if ($MODE eq "update") {
-	    my $sth_master = $dbh_master->do("UPDATE $dbtable SET ts = " . $dbh_m->quote("$now") . " WHERE server_id = $serverid");
+    if ($mode eq "update") {
+	    my $sth_master = $dbh_master->do("UPDATE $dbtable SET ts = " . $dbh_master->quote("$now") . " WHERE server_id = $serverid");
     }
 
-    if ($MODE eq "monitor") {
+    if ($mode eq "monitor") {
 		my $sth_slave = $dbh_slave->prepare("SELECT ts from $dbtable where server_id = $serverid");
 		$sth_slave->execute();
 		while (my $ref = $sth_slave->fetchrow_hashref()) {
@@ -74,9 +78,7 @@ while ( 1 ) {
             $elapsed = ceil($elapsed);
 	        print $elapsed, "\n";
             if ($statsd_enabled = 1) {
-                Net::Statsd::timing("synthetic_slave_lag.master.$short_host" => "$elapsed");
-            } else {
-                # Statsd not enabled
+                Net::Statsd::timing("synthetic_slave_lag.master.$dbhost" => "$elapsed");
             }
         }
 	}
