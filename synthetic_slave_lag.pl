@@ -77,7 +77,7 @@ while ( 1 ) {
             # round up to nearest integer
             $elapsed = ceil($elapsed);
 	        print $elapsed, "\n";
-            if ($statsd_enabled = 1) {
+            if ($statsd_enabled == 1) {
                 Net::Statsd::timing("synthetic_slave_lag.master.$dbhost" => "$elapsed");
             }
         }
